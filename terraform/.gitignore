@@ -1,0 +1,27 @@
+# Terraform state
+*.tfstate
+*.tfstate.*
+
+# Terraform cache
+.terraform/
+
+# Variable files
+*.tfvars
+
+# Sensitive files
+*.pem
+
+# Crash logs
+crash.log
+
+# Terraform override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Environment files
+.env
+
+# VS Code
+.vscode/
