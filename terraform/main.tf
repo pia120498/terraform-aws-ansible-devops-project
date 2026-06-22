@@ -28,6 +28,8 @@ resource "aws_security_group" "web_sg" {
 }
 
 
+
+
 resource "aws_iam_role" "ec2_ssm_role" {
 
   name = "ec2-ssm-role"
