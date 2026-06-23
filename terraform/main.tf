@@ -79,6 +79,20 @@ resource "aws_instance" "web_server" {
     aws_security_group.web_sg.id
   ]
 
+  user_data = <<-EOF
+#!/bin/bash
+
+dnf update -y
+
+dnf install -y httpd
+
+systemctl start httpd
+systemctl enable httpd
+
+echo "<h1>Hello from Terraform</h1>" > /var/www/html/index.html
+
+EOF
+
   tags = {
     Name = "terraform-web-server"
   }

@@ -413,3 +413,106 @@ Using AWS Systems Manager Session Manager through an IAM Role and Instance Profi
 A:
 
 Terraform refreshed the current state, compared it with the desired state, and determined that the existing resources already matched the configuration.
+
+
+## Day 2 - EC2 Bootstrap with User Data
+
+### Goal
+
+Automatically install and configure Apache web server during EC2 launch using Terraform user_data.
+
+### Changes Made
+
+- Added aws_instance resource
+- Attached Security Group
+- Attached IAM Instance Profile
+- Added user_data script to:
+  - Update packages
+  - Install Apache (httpd)
+  - Start Apache service
+  - Enable Apache on boot
+  - Create index.html
+
+### Issue Faced
+
+Terraform showed the user_data script in the EC2 configuration, but Apache was not installed and the website was not accessible.
+
+### Investigation
+
+Verified:
+
+- Terraform state contained the EC2 instance
+- user_data was present in Terraform state
+- user_data was available through cloud-init
+- Script existed in:
+  - /var/lib/cloud/instance/user-data.txt
+  - /var/lib/cloud/instance/scripts/part-001
+
+However:
+
+- httpd service was missing
+- index.html was not created
+- curl localhost failed
+
+### Root Cause
+
+The user_data script was added after the original EC2 instance had already been launched.
+
+Cloud-init executes user_data only during the first boot of an instance. Updating user_data on an already-running instance does not automatically rerun the script.
+
+### Resolution
+
+Marked the EC2 instance as tainted:
+
+terraform taint aws_instance.web_server
+
+Terraform then planned a replacement:
+
+- Destroy old EC2
+- Create new EC2
+- Execute user_data during first boot
+
+### Verification
+
+Confirmed:
+
+sudo systemctl status httpd
+
+Output:
+
+active (running)
+
+Confirmed:
+
+curl localhost
+
+Output:
+
+<h1>Hello from Terraform</h1>
+
+Confirmed:
+
+sudo cat /var/www/html/index.html
+
+Output:
+
+<h1>Hello from Terraform</h1>
+
+### Learning
+
+Terraform can replace a resource without recreating its dependencies.
+
+During EC2 replacement:
+
+- Security Group was reused
+- IAM Role was reused
+- Policy Attachment was reused
+- Instance Profile was reused
+
+Only the EC2 instance was destroyed and recreated.
+
+### Key Concept
+
+user_data is a bootstrap script executed by cloud-init during the first boot of an EC2 instance.
+
+Changing user_data later updates the EC2 metadata but does not automatically rerun the script.
