@@ -941,3 +941,537 @@ Infrastructure Provisioning
 
 Ansible:
 Configuration Management
+
+# Day 4 - Terraform Remote State, State Locking, SNS and CloudWatch Monitoring
+
+## Goal
+
+Implement production-style Terraform state management and infrastructure monitoring.
+
+Objectives:
+
+* Store Terraform state remotely in S3
+* Prevent concurrent Terraform modifications using state locking
+* Configure SNS email notifications
+* Configure CloudWatch alarms for EC2 monitoring
+
+---
+
+## Why Remote State?
+
+Until now Terraform state was stored locally:
+
+```text
+terraform.tfstate
+```
+
+Problems with local state:
+
+* State exists only on one machine
+* Difficult for teams to collaborate
+* Risk of accidental deletion
+* No centralized source of truth
+
+Production environments typically store Terraform state remotely.
+
+---
+
+## Terraform Backend Concepts
+
+Terraform Backend:
+
+Responsible for storing Terraform state.
+
+Common backend options:
+
+* Local
+* S3
+* Azure Storage
+* Google Cloud Storage
+* Terraform Cloud
+
+For AWS environments, S3 is the most common backend.
+
+---
+
+## State Locking Concept
+
+Problem:
+
+Two engineers run:
+
+```bash
+terraform apply
+```
+
+at the same time.
+
+Possible result:
+
+```text
+Engineer A ---> modifies state
+Engineer B ---> modifies state
+```
+
+State file becomes inconsistent.
+
+Solution:
+
+State Locking.
+
+Terraform acquires a lock before modifying state.
+
+Only one operation can modify infrastructure at a time.
+
+---
+
+## Creating Backend Resources
+
+Created:
+
+### S3 Bucket
+
+```hcl
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "priyaa-terraform-state-bucket"
+}
+```
+
+Purpose:
+
+Store Terraform state remotely.
+
+---
+
+### DynamoDB Table
+
+```hcl
+resource "aws_dynamodb_table" "terraform_lock" {
+  name         = "terraform-state-lock"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+}
+```
+
+Purpose:
+
+Maintain Terraform state locks.
+
+---
+
+## Backend Bootstrap Problem
+
+Initial attempt:
+
+Added backend configuration before creating the bucket.
+
+Terraform initialization failed.
+
+Error:
+
+```text
+S3 bucket "priyaa-terraform-state-bucket" does not exist
+```
+
+---
+
+### Root Cause
+
+Terraform initializes the backend before creating resources.
+
+Backend resources must already exist before Terraform can use them.
+
+This creates a bootstrap problem.
+
+---
+
+### Resolution
+
+Step 1:
+
+Used local state.
+
+Created:
+
+* S3 Bucket
+* DynamoDB Table
+
+Step 2:
+
+Planned migration to remote state after backend resources existed.
+
+---
+
+## Learning
+
+Terraform cannot create and immediately use its own backend.
+
+Backend infrastructure must exist before backend initialization.
+
+This process is commonly called:
+
+```text
+Backend Bootstrapping
+```
+
+---
+
+## Terraform State After Backend Creation
+
+Verified using:
+
+```powershell
+terraform state list
+```
+
+Output included:
+
+```text
+aws_dynamodb_table.terraform_lock
+aws_s3_bucket.terraform_state
+```
+
+Learning:
+
+Terraform state now tracks backend infrastructure resources as well.
+
+---
+
+## Introduction to SNS
+
+Amazon SNS (Simple Notification Service) is a managed messaging service.
+
+Purpose:
+
+Send notifications to subscribers.
+
+Supported protocols:
+
+* Email
+* SMS
+* HTTP
+* Lambda
+* SQS
+
+For this project:
+
+```text
+CloudWatch Alarm
+        |
+        v
+      SNS
+        |
+        v
+     Email
+```
+
+---
+
+## SNS Topic Creation
+
+Created:
+
+```hcl
+resource "aws_sns_topic" "ec2_alerts" {
+  name = "ec2-monitoring-alerts"
+}
+```
+
+Purpose:
+
+Central destination for monitoring alerts.
+
+---
+
+## SNS Email Subscription
+
+Created:
+
+```hcl
+resource "aws_sns_topic_subscription" "email_subscription" {
+  topic_arn = aws_sns_topic.ec2_alerts.arn
+  protocol  = "email"
+  endpoint  = "priyamalewadkar@gmail.com"
+}
+```
+
+Purpose:
+
+Receive CloudWatch alarm notifications through email.
+
+---
+
+## SNS Troubleshooting
+
+### Problem
+
+No confirmation email received after creating subscription.
+
+Subscription status remained:
+
+```text
+PendingConfirmation
+```
+
+---
+
+### Investigation
+
+Verified:
+
+* SNS Topic existed
+* Terraform state was correct
+* Subscription resource existed
+* Email address configuration
+
+Observed:
+
+Another email address received confirmation immediately.
+
+---
+
+### Root Cause
+
+The original mailbox did not receive SNS confirmation emails even though the subscription was successfully created.
+
+Terraform and SNS configuration were functioning correctly.
+
+---
+
+### Resolution
+
+Changed endpoint to a mailbox that successfully received SNS confirmation emails.
+
+Confirmed subscription using the AWS-generated confirmation link.
+
+Status changed from:
+
+```text
+PendingConfirmation
+```
+
+to:
+
+```text
+Confirmed
+```
+
+---
+
+## Learning
+
+SNS email subscriptions require manual confirmation.
+
+Until confirmation occurs:
+
+```text
+PendingConfirmation
+```
+
+No notifications will be delivered.
+
+After confirmation:
+
+```text
+Confirmed
+```
+
+SNS can deliver messages successfully.
+
+---
+
+## CloudWatch Monitoring
+
+CloudWatch provides monitoring and observability for AWS resources.
+
+Examples:
+
+* CPU Utilization
+* Disk Metrics
+* Memory Metrics (custom)
+* Network Usage
+* Application Logs
+
+---
+
+## CloudWatch CPU Alarm
+
+Created:
+
+```hcl
+resource "aws_cloudwatch_metric_alarm" "high_cpu" {
+  alarm_name          = "high-cpu-usage"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 70
+
+  dimensions = {
+    InstanceId = aws_instance.web_server.id
+  }
+
+  alarm_actions = [
+    aws_sns_topic.ec2_alerts.arn
+  ]
+}
+```
+
+---
+
+## Alarm Configuration Explained
+
+### Metric
+
+```text
+CPUUtilization
+```
+
+Monitors EC2 CPU usage.
+
+---
+
+### Threshold
+
+```text
+70%
+```
+
+Alarm triggers when CPU exceeds 70%.
+
+---
+
+### Period
+
+```text
+60 seconds
+```
+
+CloudWatch evaluates CPU every minute.
+
+---
+
+### Evaluation Periods
+
+```text
+2
+```
+
+CPU must exceed threshold for two consecutive periods.
+
+Equivalent:
+
+```text
+CPU > 70%
+for 2 minutes
+```
+
+---
+
+### Alarm Action
+
+```text
+SNS Topic
+```
+
+When alarm enters ALARM state:
+
+CloudWatch publishes a message to SNS.
+
+SNS sends an email notification.
+
+---
+
+## Monitoring Flow
+
+Architecture:
+
+```text
+EC2 Instance
+      |
+      v
+CloudWatch Metric
+      |
+      v
+CloudWatch Alarm
+      |
+      v
+SNS Topic
+      |
+      v
+Email Notification
+```
+
+---
+
+## Key Interview Concepts Learned
+
+### What is Terraform Remote State?
+
+Terraform state stored in a centralized backend such as S3 instead of a local file.
+
+---
+
+### Why use Remote State?
+
+* Collaboration
+* Durability
+* Centralized state management
+* Better production practices
+
+---
+
+### What is State Locking?
+
+A mechanism that prevents multiple Terraform operations from modifying state simultaneously.
+
+---
+
+### Why use DynamoDB for Terraform?
+
+To maintain state locks and prevent concurrent infrastructure modifications.
+
+---
+
+### What is SNS?
+
+Amazon Simple Notification Service used for sending notifications to subscribers.
+
+---
+
+### Why is SNS confirmation required?
+
+AWS verifies ownership of the email address before delivering notifications.
+
+---
+
+### What is CloudWatch?
+
+AWS monitoring and observability service used to collect metrics, logs and alarms.
+
+---
+
+### How does the CPU Alarm work?
+
+CloudWatch monitors EC2 CPU utilization.
+
+When CPU exceeds 70% for two consecutive one-minute periods:
+
+```text
+CloudWatch Alarm
+        |
+        v
+SNS Topic
+        |
+        v
+Email Notification
+```
+
+An email alert is sent to the configured subscriber.
