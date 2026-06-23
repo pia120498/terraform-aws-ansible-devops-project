@@ -516,3 +516,428 @@ Only the EC2 instance was destroyed and recreated.
 user_data is a bootstrap script executed by cloud-init during the first boot of an EC2 instance.
 
 Changing user_data later updates the EC2 metadata but does not automatically rerun the script.
+
+
+
+# Day 3 - Introduction to Ansible
+
+## Goal
+
+Learn Ansible basics and understand how it differs from Terraform.
+
+Terraform provisions infrastructure.
+
+Ansible manages configuration inside servers.
+
+Example:
+
+Terraform creates an EC2 instance.
+
+Ansible installs and manages Apache inside the EC2 instance.
+
+---
+
+## Installing Ansible
+
+Connected to the EC2 instance using AWS Session Manager and installed Ansible.
+
+```bash
+sudo dnf install -y ansible-core
+```
+
+Verified installation:
+
+```bash
+ansible --version
+```
+
+---
+
+## Ansible Working Directory
+
+Moved to home directory:
+
+```bash
+cd ~
+```
+
+Created project directory:
+
+```bash
+mkdir ansible-demo
+cd ansible-demo
+```
+
+Verified location:
+
+```bash
+pwd
+```
+
+Output:
+
+```text
+/home/ssm-user/ansible-demo
+```
+
+---
+
+## Inventory File
+
+Created inventory file:
+
+```ini
+[web]
+localhost ansible_connection=local
+```
+
+### Learning
+
+Inventory defines the hosts Ansible will manage.
+
+Normally inventory contains remote servers.
+
+For learning purposes, Ansible was configured to manage the local machine.
+
+---
+
+## Ansible Ad-Hoc Commands
+
+### Ping Test
+
+```bash
+ansible web -i inventory.ini -m ping
+```
+
+Output:
+
+```text
+pong
+```
+
+### Learning
+
+Ansible successfully connected to the target host and executed the ping module.
+
+---
+
+### Execute Commands
+
+```bash
+ansible web -i inventory.ini -a "uptime"
+```
+
+Output displayed server uptime.
+
+### Learning
+
+Ad-hoc commands allow one-time execution of commands without creating playbooks.
+
+Useful for quick checks and troubleshooting.
+
+---
+
+## First Playbook
+
+Created:
+
+```yaml
+---
+- name: My First Playbook
+  hosts: web
+  gather_facts: no
+
+  tasks:
+    - name: Check uptime
+      command: uptime
+```
+
+Executed:
+
+```bash
+ansible-playbook -i inventory.ini first-playbook.yml
+```
+
+### Learning
+
+Playbooks define automation tasks using YAML.
+
+Tasks are executed sequentially.
+
+---
+
+## Understanding gather_facts
+
+By default Ansible gathers system information before executing tasks.
+
+Examples:
+
+- OS information
+- Hostname
+- IP addresses
+- CPU details
+- Memory information
+
+This appears as:
+
+```text
+TASK [Gathering Facts]
+```
+
+Facts can be used later in playbooks for conditional logic and automation.
+
+---
+
+## Apache Playbook
+
+Created:
+
+```yaml
+---
+- name: Manage Apache Web Server
+  hosts: web
+  become: yes
+
+  tasks:
+
+    - name: Ensure Apache is installed
+      package:
+        name: httpd
+        state: present
+
+    - name: Ensure Apache is running
+      service:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Create custom homepage
+      copy:
+        content: "<h1>Managed by Ansible</h1>"
+        dest: /var/www/html/index.html
+```
+
+Executed:
+
+```bash
+ansible-playbook -i inventory.ini apache.yml
+```
+
+---
+
+## Understanding become
+
+```yaml
+become: yes
+```
+
+### Learning
+
+Ansible uses sudo privileges when tasks require administrative access.
+
+Equivalent to:
+
+```bash
+sudo
+```
+
+Without become, Ansible would not be able to:
+
+- Install packages
+- Start services
+- Modify system files
+
+---
+
+## Understanding Modules
+
+### package module
+
+```yaml
+package:
+  name: httpd
+  state: present
+```
+
+Ensures Apache is installed.
+
+### service module
+
+```yaml
+service:
+  name: httpd
+  state: started
+  enabled: yes
+```
+
+Ensures service is running and starts automatically after reboot.
+
+### copy module
+
+```yaml
+copy:
+  content: "<h1>Managed by Ansible</h1>"
+  dest: /var/www/html/index.html
+```
+
+Creates or updates a file with desired content.
+
+---
+
+## Idempotency
+
+### First Run
+
+```text
+ok=4
+changed=1
+```
+
+Reason:
+
+Homepage file was created.
+
+### Second Run
+
+```text
+ok=4
+changed=0
+```
+
+Reason:
+
+Desired state already existed.
+
+No changes were necessary.
+
+### Learning
+
+Ansible is idempotent.
+
+Running the same playbook multiple times produces the same result without making unnecessary changes.
+
+---
+
+## Configuration Drift
+
+Simulated drift:
+
+```bash
+sudo sh -c 'echo "<h1>I broke the server 😈</h1>" > /var/www/html/index.html'
+```
+
+Verified:
+
+```bash
+cat /var/www/html/index.html
+```
+
+Output:
+
+```html
+<h1>I broke the server 😈</h1>
+```
+
+Ran playbook again:
+
+```bash
+ansible-playbook -i inventory.ini apache.yml
+```
+
+Result:
+
+```text
+changed=1
+```
+
+Verified:
+
+```bash
+cat /var/www/html/index.html
+```
+
+Output:
+
+```html
+<h1>Managed by Ansible</h1>
+```
+
+### Learning
+
+Ansible detected that the actual state differed from the desired state.
+
+It automatically restored the configuration defined in the playbook.
+
+This is called Configuration Drift Remediation.
+
+---
+
+## Terraform vs Ansible
+
+Terraform manages infrastructure.
+
+Examples:
+
+- EC2
+- VPC
+- Security Groups
+- IAM Roles
+- Load Balancers
+
+Ansible manages server configuration.
+
+Examples:
+
+- Packages
+- Services
+- Users
+- Files
+- Application Configuration
+
+Terraform creates the server.
+
+Ansible configures the server.
+
+---
+
+## Key Interview Concepts Learned
+
+### What is an Inventory?
+
+A file that contains the list of hosts managed by Ansible.
+
+### What is a Playbook?
+
+A YAML file containing automation tasks.
+
+### What is a Module?
+
+A reusable Ansible component that performs a specific action.
+
+Examples:
+
+- package
+- service
+- copy
+- command
+- ping
+
+### What is Idempotency?
+
+Running the same automation repeatedly produces the same result without causing unnecessary changes.
+
+### What is Configuration Drift?
+
+A situation where the actual server configuration differs from the desired configuration.
+
+### How does Ansible handle Configuration Drift?
+
+Ansible compares the current state with the desired state and applies only the required changes to restore compliance.
+
+### Difference Between Terraform and Ansible
+
+Terraform:
+Infrastructure Provisioning
+
+Ansible:
+Configuration Management
