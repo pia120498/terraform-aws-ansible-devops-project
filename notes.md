@@ -1475,3 +1475,131 @@ Email Notification
 ```
 
 An email alert is sent to the configured subscriber.
+
+
+## S3 Bucket Versioning and Lifecycle Policy
+
+### Goal
+
+Protect Terraform state files and optimize long-term storage costs.
+
+---
+
+### S3 Bucket Versioning
+
+Created:
+
+```hcl
+resource "aws_s3_bucket_versioning" "terraform_state_versioning" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+```
+
+### Why Versioning?
+
+Terraform state is a critical file.
+
+Without versioning:
+
+```text
+terraform.tfstate
+     |
+overwrite
+     |
+old version lost
+```
+
+With versioning:
+
+```text
+terraform.tfstate
+     |
+Version 1
+Version 2
+Version 3
+(Current)
+```
+
+Previous versions can be recovered if the state file is accidentally modified, corrupted, or deleted.
+
+### Verification
+
+Verified in AWS Console:
+
+```text
+S3 Bucket
+  |
+  └── Properties
+        |
+        └── Versioning: Enabled
+```
+
+### Learning
+
+Enabling versioning on Terraform state buckets is a production best practice because it provides state recovery and protection against accidental changes.
+
+---
+
+### S3 Lifecycle Policy
+
+Created:
+
+```hcl
+resource "aws_s3_bucket_lifecycle_configuration" "state_lifecycle" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  rule {
+    id     = "archive-old-state-versions"
+    status = "Enabled"
+
+    noncurrent_version_transition {
+      noncurrent_days = 30
+      storage_class   = "STANDARD_IA"
+    }
+  }
+}
+```
+
+### Why Lifecycle Policies?
+
+As new versions of the Terraform state file are created, older versions remain stored in S3.
+
+Lifecycle policies automatically move older non-current versions to lower-cost storage classes.
+
+Behavior:
+
+```text
+Current Version
+       |
+Older Version (>30 Days)
+       |
+       v
+STANDARD_IA
+```
+
+### Verification
+
+Verified in AWS Console:
+
+```text
+S3 Bucket
+  |
+  └── Management
+        |
+        └── Lifecycle Rule
+              archive-old-state-versions
+```
+
+Status:
+
+```text
+Enabled
+```
+
+### Learning
+
+Lifecycle policies help optimize storage costs while preserving historical object versions for recovery purposes.
