@@ -58,3 +58,28 @@ resource "aws_iam_role_policy_attachment" "ssm_policy" {
 
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
+
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+
+  name = "ec2-ssm-profile"
+
+  role = aws_iam_role.ec2_ssm_role.name
+}
+
+
+resource "aws_instance" "web_server" {
+
+  ami           = data.aws_ssm_parameter.amazon_linux.value
+  instance_type = "t2.micro"
+
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+
+  vpc_security_group_ids = [
+    aws_security_group.web_sg.id
+  ]
+
+  tags = {
+    Name = "terraform-web-server"
+  }
+}
