@@ -1603,3 +1603,310 @@ Enabled
 ### Learning
 
 Lifecycle policies help optimize storage costs while preserving historical object versions for recovery purposes.
+
+
+
+## Terraform Modules - VPC Implementation
+
+### Goal
+
+Learn Terraform Modules by creating a reusable VPC module instead of defining networking resources directly in the root configuration.
+
+---
+
+### What is a Terraform Module?
+
+A Terraform module is a collection of Terraform configuration files grouped together to perform a specific task.
+
+Benefits:
+
+* Reusability
+* Better organization
+* Easier maintenance
+* Consistent infrastructure deployments
+
+Instead of placing all resources in the root configuration, related resources can be grouped into modules.
+
+Example:
+
+```text
+Root Configuration
+       |
+       +--> VPC Module
+                 |
+                 +--> VPC
+                 +--> Subnets
+                 +--> Internet Gateway
+                 +--> Route Tables
+```
+
+---
+
+### Module Directory Structure
+
+Created:
+
+```text
+terraform/
+│
+├── modules/
+│   └── vpc/
+│       ├── main.tf
+│       ├── variables.tf
+│       └── outputs.tf
+│
+├── vpc.tf
+```
+
+---
+
+### Module Inputs
+
+Defined variables inside:
+
+```text
+modules/vpc/variables.tf
+```
+
+Variables created:
+
+```text
+vpc_cidr
+public_subnet_cidr
+private_subnet_cidr
+```
+
+Learning:
+
+Variables allow modules to receive input values from the root configuration instead of hardcoding values.
+
+---
+
+### Resources Created Inside Module
+
+Defined in:
+
+```text
+modules/vpc/main.tf
+```
+
+Resources:
+
+1. VPC
+2. Public Subnet
+3. Private Subnet
+4. Internet Gateway
+5. Public Route Table
+6. Route Table Association
+
+---
+
+### VPC Configuration
+
+Created:
+
+```text
+10.0.0.0/16
+```
+
+Learning:
+
+A VPC provides an isolated virtual network within AWS where resources can be deployed securely.
+
+---
+
+### Public Subnet
+
+Created:
+
+```text
+10.0.1.0/24
+```
+
+Configuration:
+
+```hcl
+map_public_ip_on_launch = true
+```
+
+Learning:
+
+Instances launched inside the public subnet automatically receive public IP addresses and can communicate with the internet when routing is configured.
+
+---
+
+### Private Subnet
+
+Created:
+
+```text
+10.0.2.0/24
+```
+
+Learning:
+
+Resources in a private subnet do not automatically receive public IP addresses and are typically used for internal services such as databases and backend applications.
+
+---
+
+### Internet Gateway
+
+Created an Internet Gateway and attached it to the VPC.
+
+Learning:
+
+The Internet Gateway provides connectivity between the VPC and the public internet.
+
+Without an Internet Gateway, resources inside the VPC cannot communicate with external networks.
+
+---
+
+### Route Table
+
+Created a public route table with:
+
+```text
+0.0.0.0/0 --> Internet Gateway
+```
+
+Learning:
+
+Route tables determine how network traffic is routed.
+
+The default route:
+
+```text
+0.0.0.0/0
+```
+
+represents all external destinations.
+
+Traffic matching this route is forwarded to the Internet Gateway.
+
+---
+
+### Route Table Association
+
+Associated the public route table with the public subnet.
+
+Learning:
+
+A subnet becomes public when:
+
+* It has a route to an Internet Gateway
+* Resources inside it can receive public IP addresses
+
+---
+
+### Module Outputs
+
+Defined in:
+
+```text
+modules/vpc/outputs.tf
+```
+
+Outputs:
+
+```text
+vpc_id
+public_subnet_id
+private_subnet_id
+```
+
+Learning:
+
+Outputs expose resource information from a module so it can be consumed by other Terraform configurations.
+
+---
+
+### Module Invocation
+
+Created:
+
+```text
+vpc.tf
+```
+
+Used:
+
+```hcl
+module "vpc" {
+  source = "./modules/vpc"
+
+  vpc_cidr            = "10.0.0.0/16"
+  public_subnet_cidr  = "10.0.1.0/24"
+  private_subnet_cidr = "10.0.2.0/24"
+}
+```
+
+Learning:
+
+The root configuration calls the module and passes values through variables.
+
+This allows the same module to be reused for different environments with different CIDR ranges.
+
+---
+
+### Terraform State Verification
+
+Verified using:
+
+```powershell
+terraform state list
+```
+
+New resources:
+
+```text
+module.vpc.aws_vpc.main
+module.vpc.aws_subnet.public
+module.vpc.aws_subnet.private
+module.vpc.aws_internet_gateway.igw
+module.vpc.aws_route_table.public_rt
+module.vpc.aws_route_table_association.public_assoc
+```
+
+Learning:
+
+Terraform stores module-managed resources in the state file using the module path prefix.
+
+Example:
+
+```text
+module.vpc.aws_vpc.main
+```
+
+indicates that the resource belongs to the VPC module.
+
+---
+
+### Interview Questions Learned
+
+#### What is a Terraform Module?
+
+A reusable collection of Terraform resources that can be invoked multiple times to standardize infrastructure deployments.
+
+---
+
+#### Why use Terraform Modules?
+
+To improve code reusability, maintainability, scalability, and consistency across environments.
+
+---
+
+#### What makes a subnet public?
+
+A subnet is public when it has a route to an Internet Gateway and resources inside it can obtain public IP addresses.
+
+---
+
+#### What is the purpose of an Internet Gateway?
+
+It enables communication between resources inside a VPC and the public internet.
+
+---
+
+#### What are Terraform Outputs?
+
+Outputs expose resource attributes from a module so they can be referenced elsewhere in the configuration.
